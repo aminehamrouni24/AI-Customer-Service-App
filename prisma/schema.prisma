@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  AGENT
+}
+
+enum SourceStatus {
+  INDEXING
+  READY
+  ERROR
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+  ESCALATED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model User {
+  id            String       @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  email         String?      @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  memberships   Membership[]
+}
+
+model Workspace {
+  id              String            @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  slug            String            @unique
+  logo            String?
+  apiKey          String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  memberships     Membership[]
+  invitations     Invitation[]
+  knowledgeSources KnowledgeSource[]
+  conversations   Conversation[]
+  leads           Lead[]
+  widgetConfig    WidgetConfig?
+  auditLogs       AuditLog[]
+}
+
+model Membership {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  role        Role      @default(AGENT)
+  userId      String    @db.ObjectId
+  workspaceId String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Invitation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  email       String
+  role        Role      @default(AGENT)
+  token       String    @unique
+  workspaceId String    @db.ObjectId
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+}
+
+model KnowledgeSource {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  type         String           // DOC, TEXT, URL
+  content      String?
+  status       SourceStatus     @default(INDEXING)
+  workspaceId  String           @db.ObjectId
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks       KnowledgeChunk[]
+  lastIndexedAt DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model KnowledgeChunk {
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  content   String
+  embedding Float[]
+  sourceId  String          @db.ObjectId
+  source    KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  metadata  Json?
+}
+
+model Conversation {
+  id          String             @id @default(auto()) @map("_id") @db.ObjectId
+  visitorId   String             // Session or cookie based ID
+  status      ConversationStatus @default(OPEN)
+  workspaceId String             @db.ObjectId
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  leads       Lead[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model Message {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  role           MessageRole
+  content        String
+  conversationId String       @db.ObjectId
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+}
+
+model Lead {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  name           String?
+  email          String?
+  phone          String?
+  metadata       Json?
+  workspaceId    String       @db.ObjectId
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversationId String?      @db.ObjectId
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model WidgetConfig {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId     String    @unique @db.ObjectId
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  primaryColor    String    @default("#000000")
+  position        String    @default("right") // left, right
+  greeting        String    @default("Hi there!")
+  welcomeMessage  String    @default("How can we help you today?")
+  domainAllowlist String[]  @default([])
+  updatedAt       DateTime  @updatedAt
+}
+
+model AuditLog {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  action      String
+  entityType  String
+  entityId    String
+  userId      String?
+  workspaceId String    @db.ObjectId
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+}
